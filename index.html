@@ -1,171 +1,63 @@
 <!DOCTYPE html>
-<html>
+<html lang="cs">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>B-52 Strike</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>B-52 STRIKE</title>
 <style>
-body { margin:0; background:#000; overflow:hidden; font-family:'Arial'; }
-canvas { display:block; background: radial-gradient(ellipse at center, #001a33 0%, #000 100%); }
-#ui { position:absolute; top:15px; left:15px; color:#00ff88; font-size:22px; font-weight:bold; text-shadow: 0 0 10px #00ff88; }
-#hearts { color:red; }
-#joystick { position:absolute; bottom:100px; left:40px; width:140px; height:140px; background:radial-gradient(rgba(255,255,255,0.2), transparent); border:3px solid rgba(0,255,136,0.4); border-radius:50%; backdrop-filter: blur(5px); }
-#stick { position:absolute; width:60px; height:60px; background:radial-gradient(#00ff88, #008844); border-radius:50%; box-shadow: 0 0 15px #00ff88; top:40px; left:40px; }
-#fireBtn { position:absolute; bottom:100px; right:40px; width:110px; height:110px; background:radial-gradient(#ff4444, #aa0000); border:4px solid #ff0000; border-radius:50%; color:white; font-weight:bold; font-size:20px; box-shadow: 0 0 20px red; }
-.explosion { position:absolute; width:40px; height:40px; background: radial-gradient(circle, yellow, orange, red, transparent); border-radius:50%; animation: boom 0.5s forwards; }
-@keyframes boom { 0%{transform:scale(0); opacity:1} 100%{transform:scale(3); opacity:0} }
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;touch-action:none}
+body{background:#000;overflow:hidden;font-family:'Orbitron',sans-serif}
+canvas{display:block;background:linear-gradient(180deg,#000428 0%,#004e92 100%)}
+#ui{position:absolute;top:20px;width:100%;display:flex;justify-content:space-between;padding:0 30px;color:#00ffaa;font-size:24px;font-weight:900;text-shadow:0 0 15px #00ffaa}
+#lives{display:flex;gap:5px}
+.heart{font-size:28px;filter:drop-shadow(0 0 8px red)}
+#joystick{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);width:160px;height:160px;background:radial-gradient(circle,rgba(0,255,170,0.1) 0%,transparent 70%);border:3px solid rgba(0,255,170,0.5);border-radius:50%;backdrop-filter:blur(10px)}
+#stick{position:absolute;width:70px;height:70px;background:linear-gradient(135deg,#00ffaa,#0088ff);border-radius:50%;box-shadow:0 0 25px #00ffaa;top:45px;left:45px;transition:0.1s}
+#fireBtn{position:absolute;bottom:60px;right:40px;width:130px;height:130px;background:radial-gradient(circle,#ff0044,#aa0000);border:4px solid #ff0044;border-radius:50%;color:white;font-size:22px;font-weight:900;box-shadow:0 0 30px #ff0044;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+#gameover{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;display:none}
+#gameover h1{font-size:60px;color:#ff0044;text-shadow:0 0 20px #ff0044;animation:glow 1s infinite}
+#gameover p{font-size:24px;color:#00ffaa;margin-top:10px}
+@keyframes glow{0%,100%{opacity:1}50%{opacity:0.5}}
+.particle{position:absolute;border-radius:50%;pointer-events:none}
 </style>
 </head>
 <body>
-<div id="ui"><span id="hearts">❤️❤️❤️</span> | Skóre: <span id="score">0</span></div>
+<div id="ui">
+  <div id="lives"><span class="heart">❤️</span><span class="heart">❤️</span><span class="heart">❤️</span></div>
+  <div>SCORE: <span id="score">0</span></div>
+</div>
 <div id="joystick"><div id="stick"></div></div>
 <button id="fireBtn">FIRE</button>
+<div id="gameover"><h1>GAME OVER</h1><p>Skóre: <span id="finalScore">0</span></p></div>
 <canvas id="game"></canvas>
 
 <script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
 
-let player = {x: canvas.width/2, y: canvas.height-180, speed: 5};
-let bullets = [];
-let drones = [];
-let particles = [];
-let stars = [];
-let lives = 3;
-let score = 0;
-let keys = {x:0, y:0};
-let shooting = false;
+let player={x:canvas.width/2,y:canvas.height-120,speed:8};
+let bullets=[];let drones=[];let particles=[];let stars=[];let explosions=[];
+let moveDir=0;let shooting=false;let lives=3;let score=0;let gameActive=true;
 
-// HVĚZDY NA POZADÍ
-for(let i=0; i<100; i++){
-  stars.push({x:Math.random()*canvas.width, y:Math.random()*canvas.height, size:Math.random()*2});
-}
+// HVĚZDNÉ POLE
+for(let i=0;i<150;i++)stars.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,s:Math.random()*3,v:Math.random()*0.5+0.2});
 
-// OVLÁDÁNÍ
-const joystick = document.getElementById('joystick');
-const stick = document.getElementById('stick');
-joystick.addEventListener('touchmove', e => {
-  let t = e.touches[0]; let r = joystick.getBoundingClientRect();
-  let x = t.clientX - r.left - 70; let y = t.clientY - r.top - 70;
-  let dist = Math.min(40, Math.sqrt(x*x+y*y)); let ang = Math.atan2(y,x);
-  stick.style.left = 40 + Math.cos(ang)*dist + 'px';
-  stick.style.top = 40 + Math.sin(ang)*dist + 'px';
-  keys.x = Math.cos(ang); keys.y = Math.sin(ang);
+// OVLÁDÁNÍ - POUZE DOLEVA/DOPRAVA
+const joy=document.getElementById('joystick');
+const stick=document.getElementById('stick');
+joy.addEventListener('touchmove',e=>{
+  let t=e.touches[0];let r=joy.getBoundingClientRect();
+  let dx=t.clientX-r.left-80;
+  let dist=Math.min(45,Math.abs(dx));
+  stick.style.left=(45+Math.sign(dx)*dist)+'px';
+  moveDir=Math.sign(dx);
 });
-joystick.addEventListener('touchend', ()=>{keys.x=0; keys.y=0; stick.style.left='40px'; stick.style.top='40px';});
-document.getElementById('fireBtn').addEventListener('touchstart', ()=>shooting=true);
-document.getElementById('fireBtn').addEventListener('touchend', ()=>shooting=false);
+joy.addEventListener('touchend',()=>{moveDir=0;stick.style.left='45px'});
 
-function spawnDrone(){
-  drones.push({x: Math.random()*canvas.width, y: -60, speed: 1.5+Math.random()*2.5, hp: 1});
-}
-
-function createExplosion(x,y){
-  for(let i=0; i<15; i++){
-    particles.push({x:x, y:y, vx:(Math.random()-0.5)*8, vy:(Math.random()-0.5)*8, life:30});
-  }
-  let boom = document.createElement('div');
-  boom.className = 'explosion';
-  boom.style.left = x-20+'px'; boom.style.top = y-20+'px';
-  document.body.appendChild(boom);
-  setTimeout(()=>boom.remove(), 500);
-}
-
-function drawB52(x,y){
-  ctx.save();
-  ctx.translate(x,y);
-  // trup
-  ctx.fillStyle = '#c0c0c0';
-  ctx.beginPath(); ctx.ellipse(0,0,25,8,0,0,Math.PI*2); ctx.fill();
-  // křídla
-  ctx.fillStyle = '#999';
-  ctx.fillRect(-35,-3,70,6);
-  // motory
-  ctx.fillStyle = '#444';
-  for(let i=-3; i<=3; i+=2) ctx.fillRect(i*10, -5, 4, 10);
-  // ocas
-  ctx.fillStyle = '#888';
-  ctx.beginPath(); ctx.moveTo(20,0); ctx.lineTo(30,-8); ctx.lineTo(30,8); ctx.closePath(); ctx.fill();
-  ctx.restore();
-}
-
-function drawDrone(x,y){
-  ctx.fillStyle = '#ff3333';
-  ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#660000';
-  for(let i=0; i<4; i++){
-    let ang = i*Math.PI/2;
-    ctx.beginPath(); ctx.arc(x+Math.cos(ang)*18, y+Math.sin(ang)*18, 4, 0, Math.PI*2); ctx.fill();
-  }
-}
-
-function gameLoop(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // HVĚZDY
-  ctx.fillStyle = 'white';
-  stars.forEach(s => { ctx.globalAlpha = Math.random()*0.8+0.2; ctx.fillRect(s.x,s.y,s.size,s.size); });
-  ctx.globalAlpha = 1;
-
-  // HRÁČ
-  if(keys.x || keys.y){
-    player.x += keys.x * player.speed;
-    player.y += keys.y * player.speed;
-  }
-  player.x = Math.max(40, Math.min(canvas.width-40, player.x));
-  player.y = Math.max(40, Math.min(canvas.height-40, player.y));
-  drawB52(player.x, player.y);
-
-  // STŘELBA
-  if(shooting && Math.random() < 0.4){
-    bullets.push({x:player.x, y:player.y-20, speed:10});
-  }
-  ctx.fillStyle = '#ffff00';
-  bullets.forEach((b,i)=>{
-    b.y -= b.speed;
-    ctx.fillRect(b.x-3, b.y, 6, 12);
-    if(b.y < 0) bullets.splice(i,1);
-  });
-
-  // DRONY
-  if(Math.random() < 0.025) spawnDrone();
-  drones.forEach((d,i)=>{
-    d.y += d.speed;
-    drawDrone(d.x, d.y);
-
-    let dist = Math.sqrt((d.x-player.x)**2 + (d.y-player.y)**2);
-    if(dist < 30){
-      lives--;
-      createExplosion(d.x, d.y);
-      drones.splice(i,1);
-      document.getElementById('hearts').innerText = '❤️'.repeat(lives);
-      if(lives <= 0) { alert('GAME OVER! Skóre: '+score); location.reload(); }
-    }
-
-    bullets.forEach((b,j)=>{
-      if(Math.abs(b.x-d.x)<18 && Math.abs(b.y-d.y)<18){
-        bullets.splice(j,1);
-        createExplosion(d.x, d.y);
-        drones.splice(i,1);
-        score += 20;
-        document.getElementById('score').innerText = score;
-      }
-    });
-  });
-
-  // PARTICLE EXPLOZE
-  particles.forEach((p,i)=>{
-    p.x += p.vx; p.y += p.vy; p.life--;
-    ctx.fillStyle = `rgba(255,${200-p.life*5},0,${p.life/30})`;
-    ctx.fillRect(p.x,p.y,4,4);
-    if(p.life <= 0) particles.splice(i,1);
-  });
-
-  requestAnimationFrame(gameLoop);
-}
-gameLoop();
-</script>
-</body>
-</html>
+// STŘELBA
+document.getElementById('fireBtn').addEventListener('touchstart',()=>shooting=true);
+document.getElementById('fireBtn').addEventListener('touchend',()=>shooting=false
