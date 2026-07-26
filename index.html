@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Letadlo - Vyhýbání se střelám</title>
+<style>
+  body {
+    margin: 0;
+    background: #87CEEB;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    touch-action: none;
+  }
+  canvas {
+    display: block;
+    background: linear-gradient(to bottom, #87CEEB 0%, #98FB98 100%);
+  }
+  #ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: white;
+    font-size: 20px;
+    text-shadow: 2px 2px 4px black;
+  }
+  #gameover {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 40px;
+    text-align: center;
+    text-shadow: 3px 3px 6px black;
+    display: none;
+  }
+  /* Mobilní ovládání */
+  #joystick {
+    position: absolute;
+    bottom: 50px;
+    left: 50px;
+    width: 120px;
+    height: 120px;
+    border: 3px solid white;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+  }
+  #stick {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    background: white;
+    border-radius: 50%;
+    left: 35px;
+    top: 35px;
+  }
+  #shootBtn {
+    position: absolute;
+    bottom: 50px;
+    right: 50px;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: rgba(255,0,0,0.6);
+    border: 3px solid white;
+    color: white;
+    font-size: 20px;
+    font-weight: bold;
+  }
+  @media (min-width: 800px) {
+    #joystick, #shootBtn { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="ui">Skóre: <span id="score">0</span></div>
+<div id="gameover">
+  GAME OVER<br>
+  Skóre: <span id="finalScore">0</span><br>
+  <span style="font-size:20px">Klikni pro restart</span>
+</div>
+<canvas id="game"></canvas>
+
+<!-- Mobilní ovládání -->
+<div id="joystick"><div id="stick"></div></div>
+<button id="shootBtn">STŘÍLET</button>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let keys = {};
+let mouseX = canvas.width/2, mouseY = canvas.height/2;
+let score = 0;
+let gameOver = false;
+let isMobile = window.innerWidth < 800;
+
+// Joystick proměnné
+let joyX = 0, joyY = 0, joyActive = false;
+
+// Hráč
+const player = {
+  x: canvas.width/2,
+  y: canvas.height/2,
+  angle: 0,
+  speed: 4,
+  size: 20,
+  health: 3
+};
+
+let bullets = [];
+let enemyBullets = [];
+let clouds = [];
+
+for(let i=0; i<10; i++){
+  clouds.push({
+    x: Math.random()*canvas.width,
+    y: Math.random()*canvas.height,
+    size: 40 + Math.random()*40
+  });
+}
+
+function shoot() {
+  bullets.push({
+    x: player.x,
+    y: player.y,
+    angle: player.angle,
+    speed: 8
+  });
+}
+
+function spawnEnemyBullet() {
+  const angle = Math.random() * Math.PI * 2;
+  enemyBullets.push({
+    x: Math.random()*canvas.width,
+    y: Math.random()*canvas.height,
+    angle: angle,
+    speed: 2 + Math.random()*2
+  });
+}
+
+setInterval(spawnEnemyBullet, 800);
+
+function update() {
+  if(gameOver) return;
+
+  // Pohyb hráče - PC
+  if(!isMobile){
+    if(keys['w'] || keys['ArrowUp']) player.y -= player.speed;
+    if(keys['s'] || keys['ArrowDown']) player.y += player.speed;
+    if(keys['a'] || keys['ArrowLeft']) player.x -= player.speed;
+    if(keys['d'] || keys['ArrowRight']) player.x += player.speed;
+    player.angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+  }
+
+  // Pohyb hráče - Mobil joystick
+  if(isMobile && joyActive){
+    player.x += joyX * player.speed;
+    player.y += joyY * player.speed;
+    if(joyX!== 0 || joyY!== 0){
+      player.angle = Math.atan2(joyY, joyX);
+    }
+  }
+
+  player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
+  player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+
+  bullets.forEach(b => {
+    b.x += Math.cos(b.angle) * b.speed;
+    b.y += Math.sin(b.angle) * b.speed;
+  });
+  bullets = bullets.filter(b => b.x > 0 && b.x < canvas.width && b.y > 0 && b.y < canvas.height);
+
+  enemyBullets.forEach(b => {
+    b.x += Math.cos(b.angle) * b.speed;
+    b.y += Math.sin(b.angle) * b.speed;
+  });
+  enemyBullets = enemyBullets.filter(b => b.x > -20 && b.x < canvas.width+20 && b.y > -20 && b.y < canvas.height+20);
+
+  enemyBullets.forEach((b, i) => {
+    const dist = Math.hypot(player.x - b.x, player.y - b.y);
+    if(dist < player.size) {
+      enemyBullets.splice(i,1);
+      player.health--;
+      if(player.health <= 0) {
+        gameOver = true;
+        document.getElementById('finalScore').textContent = score;
+        document.getElementById('gameover').style.display = 'block';
+      }
+    }
+  });
+
+  score++;
+  document.getElementById('score').textContent = score;
+}
+
+function drawPlane(x, y, angle, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(20, 0);
+  ctx.lineTo(-15, -10);
+  ctx.lineTo(-10, 0);
+  ctx.lineTo(-15, 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  clouds.forEach(c => {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.size, 0, Math.PI*2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = 'yellow';
+  bullets.forEach(b => {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 4, 0, Math.PI*2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = 'red';
+  enemyBullets.forEach(b => {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 5, 0, Math.PI*2);
+    ctx.fill();
+  });
+
+  drawPlane(player.x, player.y, player.angle, '#333');
+
+  ctx.fillStyle = 'white';
+  ctx.font = '16px Arial';
+  ctx.fillText('HP: ' + player.health, 10, 50);
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+
+// PC ovládání
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if(e.key === ' ') shoot();
+});
+window.addEventListener('keyup', e => keys[e.key] = false);
+window.addEventListener('mousemove', e => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+});
+
+// Mobilní joystick
+const joystick = document.getElementById('joystick');
+const stick = document.getElementById('stick');
+
+joystick.addEventListener('touchstart', handleJoyStart);
+joystick.addEventListener('touchmove', handleJoyMove);
+joystick.addEventListener('touchend', handleJoyEnd);
+
+function handleJoyStart(e) {
+  joyActive = true;
+  handleJoyMove(e);
+}
+function handleJoyMove(e) {
+  if(!joyActive) return;
+  const touch = e.touches[0];
+  const rect = joystick.getBoundingClientRect();
+  const centerX = rect.left + rect.width/2;
+  const centerY = rect.top + rect.height/2;
+  let dx = touch.clientX - centerX;
+  let dy = touch.clientY - centerY;
+  const dist = Math.min(Math.hypot(dx, dy), 40);
+  const angle = Math.atan2(dy, dx);
+  joyX = Math.cos(angle) * dist/40;
+  joyY = Math.sin(angle) * dist/40;
+  stick.style.left = 35 + joyX*35 + 'px';
+  stick.style.top = 35 + joyY*35 + 'px';
+}
+function handleJoyEnd() {
+  joyActive = false;
+  joyX = 0; joyY = 0;
+  stick.style.left = '35px';
+  stick.style.top = '35px';
+}
+
+// Tlačítko střelby
+document.getElementById('shootBtn').addEventListener('touchstart', shoot);
+
+// Restart
+document.getElementById('gameover').addEventListener('click', () => location.reload());
+
+window.addEventListener('resize', () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  isMobile = window.innerWidth < 800;
+});
+</script>
+</body>
+</html>
